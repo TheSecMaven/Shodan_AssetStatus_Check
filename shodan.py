@@ -1,3 +1,12 @@
+__author__ = "mkkeffeler"
+#Script that gets provided list of zones to check against Shodan
+#On first run, it will run all IPs and save them in a CSV file, no events generated
+#Subsequently, it will check that file and requery all IPs in the zone and compare to determine changes.
+#Any changes that are made, get updated in the CSV file and generate a cef event as shown on line 167
+#Usage: python shodan.py (no parameters can be provided at this point)
+#Future updates: This is somewhat memory intensive, we could save the data of an IP address individually
+#rather than doing them all, and saving at the end. 
+
 import requests
 import sys
 import ipaddress
@@ -12,7 +21,7 @@ from tempfile import NamedTemporaryFile
 import shutil
 from submit_event import generate_cef_event,which_field
 
-api_key = 'fgKrboZtuq3I8KHuw5Fk4r9KTeNXa3xZ'
+api_key = 'fgKrboZtuq3I8KHuw5Fk4r9KTeNXa3xZ' #Might be best to have 2-3 keys here if we are doing lots of zones
 
 def Port_list(shodan):
     message = ""
@@ -59,16 +68,6 @@ def check_asn(shodan):
     else:
         return "No ASN Provided."
 
-def optional_arg2(arg_default,Event_ID): #Confirms the presence or lack of an IP address in -i option. 
-    def func(option,opt_str,value,parser):   #Function to hold parser data
-        if len(parser.rargs) ==  0:
-            print ("Domain Name: Unknown")
-            exit()
-        else:
-            global my_ip
-            my_ip = parser.rargs[0]
-    return func
-
 def domain_list(shodan):
     message = ""
     for domain in shodan:
@@ -82,7 +81,7 @@ def warn_and_exit(msg):
     print(msg)
     exit()
 
-def is_private_or_null(ip):
+def is_private_or_null(ip):  #Offloaded this function
     try:
         parsed_ip = ipaddress.ip_address(ip)
         if parsed_ip.is_private:
@@ -93,7 +92,10 @@ def is_private_or_null(ip):
         warn_and_exit(str(ex))
     if ip == "":
         warn_and_exit("There was no IP address provided on execution")
+#This function can be passed a filename and will open the csv file with information on that zone
+#Then will load it into a dictionary for our use and pass the dict back
 def zone_file_to_dict(zone):
+
     zone_info = {}
     parts = zone.split(".")
     last = parts[3].split("/")[0]
@@ -116,6 +118,7 @@ def zone_file_to_dict(zone):
 
 
     return zone_info
+#This function takes a dictionary, and writes it out to a zone file in CSV format
 def dict_to_zone_file(zonedict,zone):
     cur_details = []
     parts = zone.split(".")
@@ -128,9 +131,9 @@ def dict_to_zone_file(zonedict,zone):
             file.write('"'+str(zonedict[ip][detail])+'",')
         file.write("\n")
         cur_details = []
-
+#Used to update the csv zone file, and report that there was a change to the zone file
 def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,updatedindex):
-    print "WE IN HERE"
+   # print "WE IN HERE"
     row_count = zonelength
     parts = zone.split(".")
     last = parts[3].split("/")[0]
@@ -143,10 +146,10 @@ def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,
       #  row_count = sum(1 for row in reader) # fileObject is your csv.reader
      #   print str((row_count - linenumber))
         for row in reader:
-            print "ROWSSSS"
+        #    print "ROWSSSS"
             if linecount != (row_count - linenumber - 1):  #If the row we are looking at is not the one we need to update
                 writer.writerow(row)
-                print "FOUND THE LINE"
+         #       print "FOUND THE LINE"
                 linecount += 1
             else: #Now we have the row we need to edit
                 line = []
@@ -160,28 +163,28 @@ def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,
                         index += 1
                 writer.writerow(line) #Write the row
                 linecount += 1
-    shutil.move(tempfile.name, filename)
-    event = generate_cef_event(key_changed,newdata,olddata,ip)
+    shutil.move(tempfile.name, filename) #Move temp file to permanent, don't want to read and write to same file
+    event = generate_cef_event(key_changed,newdata,olddata,ip) #Generate a cef event for this change
     print event
  #   syslog(event)
 
     return
  
 if __name__ == "__main__":
-    zones = ["66.111.41.249/27"]
-    for zone in zones:
+    zones = ["66.111.41.249/27"] #List of zones to be checked
+    for zone in zones:  #for every zone
         linenumber = 0
-        previousstate = zone_file_to_dict(zone)
+        previousstate = zone_file_to_dict(zone) #Check if we have done this zone before, if so load up the previous results
         print "PREV STATE IS :" + str(previousstate)
         if previousstate != {}: #If we have done this zone once before, then we should check everything. 
-            for ip in IPNetwork(zone):
+            for ip in IPNetwork(zone): #For all IPs in this zone
                 zonelength = len(IPNetwork(zone))
-                parsed_ip = is_private_or_null(ip)
-                time.sleep(1)
+                parsed_ip = is_private_or_null(ip)  #If its private or empty, seems useless to check
+                time.sleep(1) #Can't check against Shodan more than 1 time per second
                 response = requests.get('https://api.shodan.io/shodan/host/%s?key=%s' % (str(parsed_ip), api_key))
                 shodan= response.json()
 
-                if 'data' in shodan.keys():
+                if 'data' in shodan.keys(): #if we got data back, check that it doesn't conflict
                     if str(shodan['data'][0]['location']['country_name']) != previousstate[str(ip)]["location"]:
                         update_and_report(zonelength,str(ip),zone,linenumber,"location",str(shodan['data'][0]['location']['country_name']),previousstate[ip]["location"],5)
 
@@ -203,7 +206,7 @@ if __name__ == "__main__":
 
                     if Port_list(shodan) != previousstate[str(ip)]["ports"]:
                         update_and_report(zonelength,str(ip),zone,linenumber,"ports",Port_list(shodan),previousstate[str(ip)]["ports"],4)
-                else:
+                else: #Otherwise it was an empty results or we had some other error, no reports should be made
                     print(shodan['error'])
                 linenumber += 1
 
@@ -216,7 +219,7 @@ if __name__ == "__main__":
                     response = requests.get('https://api.shodan.io/shodan/host/%s?key=%s' % (str(parsed_ip), api_key))
                     new_baseline[str(ip)] = {}
                     shodan= response.json()
-                    if 'data' in shodan.keys():
+                    if 'data' in shodan.keys(): #Fill in all the info and continue
                         new_baseline[str(ip)]["location"] = str(shodan['data'][0]['location']['country_name'])
                         new_baseline[str(ip)]["hostname"] = hostname_list(shodan) 
 
@@ -225,7 +228,7 @@ if __name__ == "__main__":
                         new_baseline[str(ip)]["ASN"] = check_asn(shodan)
                         new_baseline[str(ip)]["organization"] = check_org(shodan)
                         new_baseline[str(ip)]["ports"] = Port_list(shodan)
-                    else:
+                    else: #If this IP does not have info on it fill in N/A
                         print(shodan['error'])
                         new_baseline[str(ip)]["location"] = "N/A"
                         new_baseline[str(ip)]["hostname"] = "N/A"
