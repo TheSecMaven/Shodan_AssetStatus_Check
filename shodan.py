@@ -10,6 +10,7 @@ import time
 import csv
 from tempfile import NamedTemporaryFile
 import shutil
+from submit_event import generate_cef_event,which_field
 
 api_key = 'fgKrboZtuq3I8KHuw5Fk4r9KTeNXa3xZ'
 
@@ -160,6 +161,10 @@ def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,
                 writer.writerow(line) #Write the row
                 linecount += 1
     shutil.move(tempfile.name, filename)
+    event = generate_cef_event(key_changed,newdata,olddata,ip)
+    print event
+ #   syslog(event)
+
     return
  
 if __name__ == "__main__":
