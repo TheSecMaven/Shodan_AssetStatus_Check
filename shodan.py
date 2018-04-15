@@ -2,7 +2,7 @@ __author__ = "mkkeffeler"
 #Script that gets provided list of zones to check against Shodan
 #On first run, it will run all IPs and save them in a CSV file, no events generated
 #Subsequently, it will check that file and requery all IPs in the zone and compare to determine changes.
-#Any changes that are made, get updated in the CSV file and generate a cef event as shown on line 167
+#Any changes that are made, get updated in the CSV file and generate a cef event as shown on line 164
 #Usage: python shodan.py (no parameters can be provided at this point)
 #Future updates: This is somewhat memory intensive, we could save the data of an IP address individually
 #rather than doing them all, and saving at the end. 
@@ -105,10 +105,8 @@ def zone_file_to_dict(zone):
         file = csv.reader(ifile)
         for line in file:
           #  print line
-            print line
             zone_info[line[0]] = {}
 
-            print "DETAILS IS" + str(line[0])
             zone_info[line[0]]["location"] = line[5]
             zone_info[line[0]]["certificate"] = line[2]
             zone_info[line[0]]["ports"] = line[4]
@@ -127,8 +125,6 @@ def dict_to_zone_file(zonedict,zone):
     file = open(parts[0]+parts[1]+parts[2]+last+".csv","w+")
     for ip in zonedict:
         file.write(ip+",")
-        for detail in zonedict[ip]:
-            print detail
             file.write('"'+str(zonedict[ip][detail])+'",')
         file.write("\n")
         cur_details = []
@@ -166,7 +162,7 @@ def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,
                 linecount += 1
     shutil.move(tempfile.name, filename) #Move temp file to permanent, don't want to read and write to same file
     event = generate_cef_event(key_changed,newdata,olddata,ip) #Generate a cef event for this change
-    print event
+    print (event)
  #   syslog(event)
 
     return
@@ -176,7 +172,6 @@ if __name__ == "__main__":
     for zone in zones:  #for every zone
         linenumber = 0
         previousstate = zone_file_to_dict(zone) #Check if we have done this zone before, if so load up the previous results
-        print "PREV STATE IS :" + str(previousstate)
         if previousstate != {}: #If we have done this zone once before, then we should check everything. 
             for ip in IPNetwork(zone): #For all IPs in this zone
                 zonelength = len(IPNetwork(zone))
@@ -199,7 +194,7 @@ if __name__ == "__main__":
                         update_and_report(zonelength,str(ip),zone,linenumber,"certificate",certificate_status(shodan['data'][0]),previousstate[str(ip)]["certificate"],2)
 
                     if check_asn(shodan) != previousstate[str(ip)]["ASN"]:
-                        print "1: " + check_asn(shodan) + "2 " + previousstate[str(ip)]["ASN"]
+                       # print "1: " + check_asn(shodan) + "2 " + previousstate[str(ip)]["ASN"]
                         update_and_report(zonelength,str(ip),zone,linenumber,"ASN",check_asn(shodan),previousstate[str(ip)]["ASN"],7)
 
                     if check_org(shodan) != previousstate[str(ip)]["organization"]:
@@ -214,7 +209,6 @@ if __name__ == "__main__":
         else: #Otherwise, lets just store everything the first time so we can set a base case
             new_baseline = {}
             for ip in IPNetwork(zone):
-                    print ip
                     parsed_ip = is_private_or_null(ip)
                     time.sleep(1)
                     response = requests.get('https://api.shodan.io/shodan/host/%s?key=%s' % (str(parsed_ip), api_key))
