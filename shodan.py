@@ -155,7 +155,7 @@ def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,
                         line.append(detail)
                         index += 1
                     else:
-                        line.append(newdata+"BLAH") #Now append new data in where it should be
+                        line.append(newdata) #Now append new data in where it should be
                         index += 1
                 writer.writerow(line) #Write the row
                 linecount += 1
@@ -189,7 +189,7 @@ if __name__ == "__main__":
                     if certificate_status(shodan['data'][0]) != previousstate[str(ip)]["certificate"]:
                         update_and_report(zonelength,str(ip),zone,linenumber,"certificate",certificate_status(shodan['data'][0]),previousstate[str(ip)]["certificate"],2)
 
-                    if check_asn(shodan) != previousstate[str(ip)]["ASN"][1:-1]:
+                    if check_asn(shodan) != previousstate[str(ip)]["ASN"]:
                         print "1: " + check_asn(shodan) + "2 " + previousstate[str(ip)]["ASN"]
                         update_and_report(zonelength,str(ip),zone,linenumber,"ASN",check_asn(shodan),previousstate[str(ip)]["ASN"],7)
 
