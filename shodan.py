@@ -6,6 +6,7 @@ __author__ = "mkkeffeler"
 #Usage: python shodan.py (no parameters can be provided at this point)
 #Future updates: This is somewhat memory intensive, we could save the data of an IP address individually
 #rather than doing them all, and saving at the end. 
+#Future Update 2: Move api key to config file or find another way to store potentially multiple.
 
 import requests
 import sys
