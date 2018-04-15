@@ -125,7 +125,7 @@ def dict_to_zone_file(zonedict,zone):
     file = open(parts[0]+parts[1]+parts[2]+last+".csv","w+")
     for ip in zonedict:
         file.write(ip+",")
-            file.write('"'+str(zonedict[ip][detail])+'",')
+        file.write('"'+str(zonedict[ip][detail])+'",')
         file.write("\n")
         cur_details = []
 #Used to update the csv zone file, and report that there was a change to the zone file
