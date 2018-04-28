@@ -86,9 +86,9 @@ def is_private_or_null(ip):  #Offloaded this function
     try:
         parsed_ip = ipaddress.ip_address(ip)
         if parsed_ip.is_private:
-            warn_and_exit('This is a private IP: {0}'.format(str(parsed_ip)))
+            return 1
         else:
-            return parsed_ip
+            return 0
     except Exception as ex:
         warn_and_exit(str(ex))
     if ip == "":
@@ -123,11 +123,12 @@ def dict_to_zone_file(zonedict,zone):
     parts = zone.split(".")
     last = parts[3].split("/")[0]
     file = open(parts[0]+parts[1]+parts[2]+last+".csv","w+")
+    writer = csv.writer(file, delimiter=',')
     for ip in zonedict:
-        file.write(ip+",")
-        file.write('"'+str(zonedict[ip][detail])+'",')
-        file.write("\n")
-        cur_details = []
+        line = []
+        for detail in zonedict[ip]: #for every element in this row
+            line.append(zonedict[ip][detail]) #Now append new data in where it should be
+        writer.writerow(line)
 #Used to update the csv zone file, and report that there was a change to the zone file
 def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,updatedindex):
    # print "WE IN HERE"
@@ -168,68 +169,76 @@ def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,
     return
  
 if __name__ == "__main__":
-    zones = ["66.111.41.249/27"] #List of zones to be checked
+    zones = ["169.198.204.0/23","192.168.172.1/24"] #List of zones to be checked
     for zone in zones:  #for every zone
         linenumber = 0
         previousstate = zone_file_to_dict(zone) #Check if we have done this zone before, if so load up the previous results
         if previousstate != {}: #If we have done this zone once before, then we should check everything. 
             for ip in IPNetwork(zone): #For all IPs in this zone
                 zonelength = len(IPNetwork(zone))
-                parsed_ip = is_private_or_null(ip)  #If its private or empty, seems useless to check
-                time.sleep(1) #Can't check against Shodan more than 1 time per second
-                response = requests.get('https://api.shodan.io/shodan/host/%s?key=%s' % (str(parsed_ip), api_key))
-                shodan= response.json()
+                if (is_private_or_null(ip) == 0):  #If its private or empty, seems useless to check
+                    time.sleep(1) #Can't check against Shodan more than 1 time per second
+                    response = requests.get('https://api.shodan.io/shodan/host/%s?key=%s' % (str(parsed_ip), api_key))
+                    print ("IP: " + str(parsed_ip))
+                    try:
+                        shodan= response.json()
 
-                if 'data' in shodan.keys(): #if we got data back, check that it doesn't conflict
-                    if str(shodan['data'][0]['location']['country_name']) != previousstate[str(ip)]["location"]:
-                        update_and_report(zonelength,str(ip),zone,linenumber,"location",str(shodan['data'][0]['location']['country_name']),previousstate[ip]["location"],5)
+                        if 'data' in shodan.keys(): #if we got data back, check that it doesn't conflict
+                            if str(shodan['data'][0]['location']['country_name']) != previousstate[str(ip)]["location"]:
+                                update_and_report(zonelength,str(ip),zone,linenumber,"location",str(shodan['data'][0]['location']['country_name']),previousstate[ip]["location"],5)
 
-                    if hostname_list(shodan) != previousstate[str(ip)]["hostname"]:
-                        update_and_report(zonelength,str(ip),zone,linenumber,"hostname",hostname_list(shodan),previousstate[str(ip)]["hostname"],3)
+                            if hostname_list(shodan) != previousstate[str(ip)]["hostname"]:
+                                update_and_report(zonelength,str(ip),zone,linenumber,"hostname",hostname_list(shodan),previousstate[str(ip)]["hostname"],3)
 
-                    if domain_list(shodan['data'][0]['domains']) != previousstate[str(ip)]["domain"]:
-                        update_and_report(zonelength,str(ip),zone,linenumber,"domain",domain_list(shodan['data'][0]['domains']),previousstate[str(ip)]["domain"],1)
+                            if domain_list(shodan['data'][0]['domains']) != previousstate[str(ip)]["domain"]:
+                                update_and_report(zonelength,str(ip),zone,linenumber,"domain",domain_list(shodan['data'][0]['domains']),previousstate[str(ip)]["domain"],1)
 
-                    if certificate_status(shodan['data'][0]) != previousstate[str(ip)]["certificate"]:
-                        update_and_report(zonelength,str(ip),zone,linenumber,"certificate",certificate_status(shodan['data'][0]),previousstate[str(ip)]["certificate"],2)
+                            if certificate_status(shodan['data'][0]) != previousstate[str(ip)]["certificate"]:
+                                update_and_report(zonelength,str(ip),zone,linenumber,"certificate",certificate_status(shodan['data'][0]),previousstate[str(ip)]["certificate"],2)
 
-                    if check_asn(shodan) != previousstate[str(ip)]["ASN"]:
-                       # print "1: " + check_asn(shodan) + "2 " + previousstate[str(ip)]["ASN"]
-                        update_and_report(zonelength,str(ip),zone,linenumber,"ASN",check_asn(shodan),previousstate[str(ip)]["ASN"],7)
+                            if check_asn(shodan) != previousstate[str(ip)]["ASN"]:
+                               # print "1: " + check_asn(shodan) + "2 " + previousstate[str(ip)]["ASN"]
+                                update_and_report(zonelength,str(ip),zone,linenumber,"ASN",check_asn(shodan),previousstate[str(ip)]["ASN"],7)
 
-                    if check_org(shodan) != previousstate[str(ip)]["organization"]:
-                        update_and_report(zonelength,str(ip),zone,linenumber,"organization",check_org(shodan),previousstate[str(ip)]["organization"],6)
+                            if check_org(shodan) != previousstate[str(ip)]["organization"]:
+                                update_and_report(zonelength,str(ip),zone,linenumber,"organization",check_org(shodan),previousstate[str(ip)]["organization"],6)
 
-                    if Port_list(shodan) != previousstate[str(ip)]["ports"]:
-                        update_and_report(zonelength,str(ip),zone,linenumber,"ports",Port_list(shodan),previousstate[str(ip)]["ports"],4)
-                else: #Otherwise it was an empty results or we had some other error, no reports should be made
-                    print(shodan['error'])
-                linenumber += 1
-
+                            if Port_list(shodan) != previousstate[str(ip)]["ports"]:
+                                update_and_report(zonelength,str(ip),zone,linenumber,"ports",Port_list(shodan),previousstate[str(ip)]["ports"],4)
+                        else: #Otherwise it was an empty results or we had some other error, no reports should be made
+                            print(shodan['error'])
+                        linenumber += 1
+                    except:
+                        continue
         else: #Otherwise, lets just store everything the first time so we can set a base case
             new_baseline = {}
             for ip in IPNetwork(zone):
-                    parsed_ip = is_private_or_null(ip)
-                    time.sleep(1)
-                    response = requests.get('https://api.shodan.io/shodan/host/%s?key=%s' % (str(parsed_ip), api_key))
-                    new_baseline[str(ip)] = {}
-                    shodan= response.json()
-                    if 'data' in shodan.keys(): #Fill in all the info and continue
-                        new_baseline[str(ip)]["location"] = str(shodan['data'][0]['location']['country_name'])
-                        new_baseline[str(ip)]["hostname"] = hostname_list(shodan) 
+                    if (is_private_or_null(ip) == 0):
+                        time.sleep(1)
+                        parsed_ip = ip
+                        response = requests.get('https://api.shodan.io/shodan/host/%s?key=%s' % (str(parsed_ip), api_key))
+                        print ("IP: " + str(parsed_ip))
+                        new_baseline[str(ip)] = {}
+                        try:
+                            shodan= response.json()
+                            if 'data' in shodan.keys(): #Fill in all the info and continue
+                                new_baseline[str(ip)]["location"] = str(shodan['data'][0]['location']['country_name'])
+                                new_baseline[str(ip)]["hostname"] = hostname_list(shodan) 
 
-                        new_baseline[str(ip)]["domain"] = domain_list(shodan['data'][0]['domains'])
-                        new_baseline[str(ip)]["certificate"] = certificate_status(shodan['data'][0])
-                        new_baseline[str(ip)]["ASN"] = check_asn(shodan)
-                        new_baseline[str(ip)]["organization"] = check_org(shodan)
-                        new_baseline[str(ip)]["ports"] = Port_list(shodan)
-                    else: #If this IP does not have info on it fill in N/A
-                        print(shodan['error'])
-                        new_baseline[str(ip)]["location"] = "N/A"
-                        new_baseline[str(ip)]["hostname"] = "N/A"
-                        new_baseline[str(ip)]["domain"] = "N/A"
-                        new_baseline[str(ip)]["certificate"] = "N/A"
-                        new_baseline[str(ip)]["ASN"] = "N/A"
-                        new_baseline[str(ip)]["organization"] = "N/A"
-                        new_baseline[str(ip)]["ports"] = "N/A"
+                                new_baseline[str(ip)]["domain"] = domain_list(shodan['data'][0]['domains'])
+                                new_baseline[str(ip)]["certificate"] = certificate_status(shodan['data'][0])
+                                new_baseline[str(ip)]["ASN"] = check_asn(shodan)
+                                new_baseline[str(ip)]["organization"] = check_org(shodan)
+                                new_baseline[str(ip)]["ports"] = Port_list(shodan)
+                            else: #If this IP does not have info on it fill in N/A
+                                print(shodan['error'])
+                                new_baseline[str(ip)]["location"] = "N/A"
+                                new_baseline[str(ip)]["hostname"] = "N/A"
+                                new_baseline[str(ip)]["domain"] = "N/A"
+                                new_baseline[str(ip)]["certificate"] = "N/A"
+                                new_baseline[str(ip)]["ASN"] = "N/A"
+                                new_baseline[str(ip)]["organization"] = "N/A"
+                                new_baseline[str(ip)]["ports"] = "N/A"
+                        except:
+                            continue
             dict_to_zone_file(new_baseline,zone) #Write this to the file
