@@ -125,7 +125,7 @@ def dict_to_zone_file(zonedict,zone):
     file = open(parts[0]+parts[1]+parts[2]+last+".csv","w+")
     writer = csv.writer(file, delimiter=',')
     for ip in zonedict:
-        line = []
+        line = [ip]
         for detail in zonedict[ip]: #for every element in this row
             line.append(zonedict[ip][detail]) #Now append new data in where it should be
         writer.writerow(line)
@@ -177,6 +177,7 @@ if __name__ == "__main__":
             for ip in IPNetwork(zone): #For all IPs in this zone
                 zonelength = len(IPNetwork(zone))
                 if (is_private_or_null(ip) == 0):  #If its private or empty, seems useless to check
+                    parsed_ip = ip
                     time.sleep(1) #Can't check against Shodan more than 1 time per second
                     response = requests.get('https://api.shodan.io/shodan/host/%s?key=%s' % (str(parsed_ip), api_key))
                     print ("IP: " + str(parsed_ip))
