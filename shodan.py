@@ -11,6 +11,7 @@ __author__ = "mkkeffeler"
 import requests
 import sys
 import ipaddress
+from configparser import ConfigParser
 import dateutil.parser
 from pprint import pprint
 from netaddr import *
@@ -122,8 +123,8 @@ def dict_to_zone_file(zonedict,zone):
     cur_details = []
     parts = zone.split(".")
     last = parts[3].split("/")[0]
-    file = open(parts[0]+parts[1]+parts[2]+last+".csv","w+")
-    writer = csv.writer(file, delimiter=',')
+    file = open(parts[0]+parts[1]+parts[2]+last+".csv","w")
+    writer = csv.writer(file, delimiter=',',quoting=csv.QUOTE_ALL)
     for ip in zonedict:
         line = [ip]
         for detail in zonedict[ip]: #for every element in this row
@@ -169,7 +170,12 @@ def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,
     return
  
 if __name__ == "__main__":
-    zones = ["169.198.204.0/23","192.168.172.1/24"] #List of zones to be checked
+    config = ConfigParser()
+    config.read('config.ini')
+    config_zones = config.get('DEFAULT','zones')
+    config_zones = config_zones.split(",")
+    zones = config_zones
+   #List of zones to be checked
     for zone in zones:  #for every zone
         linenumber = 0
         previousstate = zone_file_to_dict(zone) #Check if we have done this zone before, if so load up the previous results
