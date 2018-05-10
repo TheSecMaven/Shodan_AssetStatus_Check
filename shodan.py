@@ -23,7 +23,7 @@ from tempfile import NamedTemporaryFile
 import shutil
 from submit_event import generate_cef_event,which_field
 
-api_key = '' #Might be best to have 2-3 keys here if we are doing lots of zones
+api_key = 'fgKrboZtuq3I8KHuw5Fk4r9KTeNXa3xZ' #Might be best to have 2-3 keys here if we are doing lots of zones
 
 def Port_list(shodan):
     message = ""
