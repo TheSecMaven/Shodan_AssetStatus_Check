@@ -194,11 +194,15 @@ if __name__ == "__main__":
                             if str(shodan['data'][0]['location']['country_name']) != previousstate[str(ip)]["location"]:
                                 update_and_report(zonelength,str(ip),zone,linenumber,"location",str(shodan['data'][0]['location']['country_name']),previousstate[ip]["location"],5)
 
-                            if hostname_list(shodan) != previousstate[str(ip)]["hostname"]:
-                                update_and_report(zonelength,str(ip),zone,linenumber,"hostname",hostname_list(shodan),previousstate[str(ip)]["hostname"],3)
+                            hostnames = hostname_list(shodan).split(" ")
+                            for hostname in hostnames:
+                                if hostname not in previousstate[str(ip)]["hostname"]:
+                                    update_and_report(zonelength,str(ip),zone,linenumber,"hostname",hostname_list(shodan),previousstate[str(ip)]["hostname"],3)
 
-                            if domain_list(shodan['data'][0]['domains']) != previousstate[str(ip)]["domain"]:
-                                update_and_report(zonelength,str(ip),zone,linenumber,"domain",domain_list(shodan['data'][0]['domains']),previousstate[str(ip)]["domain"],1)
+                            domains = domain_list(shodan['data'][0]['domains']).split(" ")
+                            for domain in domains:
+                                if domain not in previousstate[str(ip)]["domain"]:
+                                    update_and_report(zonelength,str(ip),zone,linenumber,"domain",domain_list(shodan['data'][0]['domains']),previousstate[str(ip)]["domain"],1)
 
                             if certificate_status(shodan['data'][0]) != previousstate[str(ip)]["certificate"]:
                                 update_and_report(zonelength,str(ip),zone,linenumber,"certificate",certificate_status(shodan['data'][0]),previousstate[str(ip)]["certificate"],2)
@@ -209,8 +213,10 @@ if __name__ == "__main__":
 
                             if check_org(shodan) != previousstate[str(ip)]["organization"]:
                                 update_and_report(zonelength,str(ip),zone,linenumber,"organization",check_org(shodan),previousstate[str(ip)]["organization"],6)
-
-                            if Port_list(shodan) != previousstate[str(ip)]["ports"]:
+                            
+                            ports = Port_list(shodan).split(" ")
+                            for port in ports:
+                             if port not in previousstate[str(ip)]["ports"]:
                                 update_and_report(zonelength,str(ip),zone,linenumber,"ports",Port_list(shodan),previousstate[str(ip)]["ports"],4)
                         else: #Otherwise it was an empty results or we had some other error, no reports should be made
                             print(shodan['error'])
