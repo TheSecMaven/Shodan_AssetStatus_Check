@@ -1,3 +1,4 @@
+#!/az/arcsight/counteract_scripts/env/bin/python
 __author__ = "mkkeffeler"
 #Script that gets provided list of zones to check against Shodan
 #On first run, it will run all IPs and save them in a CSV file, no events generated
@@ -21,9 +22,9 @@ import time
 import csv
 from tempfile import NamedTemporaryFile
 import shutil
-from submit_event import generate_cef_event,which_field
+from submit_event import generate_cef_event,which_field,syslog
 
-api_key = '' #Might be best to have 2-3 keys here if we are doing lots of zones
+api_key = ''#Might be best to have 2-3 keys here if we are doing lots of zones
 
 def Port_list(shodan):
     message = ""
@@ -107,7 +108,6 @@ def zone_file_to_dict(zone):
         for line in file:
           #  print line
             zone_info[line[0]] = {}
-
             zone_info[line[0]]["location"] = line[5]
             zone_info[line[0]]["certificate"] = line[2]
             zone_info[line[0]]["ports"] = line[4]
@@ -119,53 +119,59 @@ def zone_file_to_dict(zone):
 
     return zone_info
 #This function takes a dictionary, and writes it out to a zone file in CSV format
-def dict_to_zone_file(zonedict,zone):
+def dict_to_zone_file(order,zonedict,zone):
+    ordered = ["domain","certificate","hostname","ports","location","organization","ASN"]
     cur_details = []
     parts = zone.split(".")
     last = parts[3].split("/")[0]
     file = open(parts[0]+parts[1]+parts[2]+last+".csv","w")
     writer = csv.writer(file, delimiter=',',quoting=csv.QUOTE_ALL)
-    for ip in zonedict:
+    for ip in order:
         line = [ip]
-        for detail in zonedict[ip]: #for every element in this row
+        for detail in ordered: #for every element in this row
             line.append(zonedict[ip][detail]) #Now append new data in where it should be
         writer.writerow(line)
 #Used to update the csv zone file, and report that there was a change to the zone file
+def split_ip(ip):
+    """Split a IP address given as string into a 4-tuple of integers."""
+    return tuple(int(part) for part in ip.split('.'))
+
+def my_key(item):
+    return split_ip(item[0])
 def update_and_report(zonelength,ip,zone,linenumber,key_changed,newdata,olddata,updatedindex):
-   # print "WE IN HERE"
+    print ("WE IN HERE - Update and Report")
     row_count = zonelength
     parts = zone.split(".")
     last = parts[3].split("/")[0]
     filename = parts[0]+parts[1]+parts[2]+last+".csv"
-    tempfile = NamedTemporaryFile(delete=False)
     linecount = 0
-    with open(parts[0]+parts[1]+parts[2]+last+".csv", 'rb') as csvFile, tempfile:
-        reader = csv.reader(csvFile, delimiter=',')
-        writer = csv.writer(tempfile, delimiter=',')
-      #  row_count = sum(1 for row in reader) # fileObject is your csv.reader
+    reader = csv.reader(open(filename,"r"), delimiter=',')
+    writer = csv.writer(open("holder.txt","w"), delimiter=',')
+    # row_count = sum(1 for row in reader) # fileObject is your csv.reader
      #   print str((row_count - linenumber))
-        for row in reader:
+    for row in reader:
         #    print "ROWSSSS"
-            if linecount != (row_count - linenumber - 1):  #If the row we are looking at is not the one we need to update
-                writer.writerow(row)
-         #       print "FOUND THE LINE"
-                linecount += 1
-            else: #Now we have the row we need to edit
-                line = []
-                index = 0
-                for detail in row: #for every element in this row
-                    if index != updatedindex: #If this element is not at the index of the one to be updated, write it to list
-                        line.append(detail)
-                        index += 1
-                    else:
-                        line.append(newdata) #Now append new data in where it should be
-                        index += 1
-                writer.writerow(line) #Write the row
-                linecount += 1
-    shutil.move(tempfile.name, filename) #Move temp file to permanent, don't want to read and write to same file
+        if linecount != (linenumber):  #If the row we are looking at is not the one we need to update
+            writer.writerow(row)
+            print ("FOUND THE LINE")
+            linecount += 1
+        else: #Now we have the row we need to edit
+            print ((row))
+            line = []
+            index = 0
+            for detail in row: #for every element in this row
+                if index != updatedindex: #If this element is not at the index of the one to be updated, write it to list
+                    line.append( detail )
+                    index += 1
+                else:
+                    line.append(newdata) #Now append new data in where it should be
+                    index += 1
+            writer.writerow(line) #Write the row
+            linecount += 1
+    shutil.move("holder.txt", filename) #Move temp file to permanent, don't want to read and write to same file
     event = generate_cef_event(key_changed,newdata,olddata,ip) #Generate a cef event for this change
     print (event)
- #   syslog(event)
+    syslog(event)
 
     return
  
@@ -175,57 +181,53 @@ if __name__ == "__main__":
     config_zones = config.get('DEFAULT','zones')
     config_zones = config_zones.split(",")
     zones = config_zones
+    order = []
    #List of zones to be checked
     for zone in zones:  #for every zone
         linenumber = 0
+        order = []
         previousstate = zone_file_to_dict(zone) #Check if we have done this zone before, if so load up the previous results
         if previousstate != {}: #If we have done this zone once before, then we should check everything. 
             for ip in IPNetwork(zone): #For all IPs in this zone
                 zonelength = len(IPNetwork(zone))
+                order.append(str(ip))
                 if (is_private_or_null(ip) == 0):  #If its private or empty, seems useless to check
                     parsed_ip = ip
                     time.sleep(1) #Can't check against Shodan more than 1 time per second
                     response = requests.get('https://api.shodan.io/shodan/host/%s?key=%s' % (str(parsed_ip), api_key))
                     print ("IP: " + str(parsed_ip))
-                    try:
-                        shodan= response.json()
+                    shodan= response.json()
+                    print ("we ready")
+                    if 'data' in shodan.keys(): #if we got data back, check that it doesn't conflict
+                        print ("first: " + str(previousstate[str(ip)]["hostname"]))
+                        print ("second: " + str(hostname_list(shodan).split(" ")))
+                        if (str(shodan['data'][0]['location']['country_name']) != previousstate[str(ip)]["location"]):
+                            update_and_report(zonelength,str(ip),zone,linenumber,"location",str(shodan['data'][0]['location']['country_name']),previousstate[str(ip)]["location"],5)
+                        if sorted(hostname_list(shodan).split(" ")) != sorted(previousstate[str(ip)]["hostname"].split(" ")):
+                            update_and_report(zonelength,str(ip),zone,linenumber,"hostname",hostname_list(shodan),previousstate[str(ip)]["hostname"],3)
+                        domains = domain_list(shodan['data'][0]['domains']).split(" ")
+                        if sorted(previousstate[str(ip)]["domain"].split(" ")) != sorted(domains):
+                            update_and_report(zonelength,str(ip),zone,linenumber,"domain",domain_list(shodan['data'][0]['domains']),previousstate[str(ip)]["domain"],1)
 
-                        if 'data' in shodan.keys(): #if we got data back, check that it doesn't conflict
-                            if str(shodan['data'][0]['location']['country_name']) != previousstate[str(ip)]["location"]:
-                                update_and_report(zonelength,str(ip),zone,linenumber,"location",str(shodan['data'][0]['location']['country_name']),previousstate[ip]["location"],5)
+                        if certificate_status(shodan['data'][0]) != previousstate[str(ip)]["certificate"]:
+                            update_and_report(zonelength,str(ip),zone,linenumber,"certificate",certificate_status(shodan['data'][0]),previousstate[str(ip)]["certificate"],2)
 
-                            hostnames = hostname_list(shodan).split(" ")
-                            for hostname in hostnames:
-                                if hostname not in previousstate[str(ip)]["hostname"]:
-                                    update_and_report(zonelength,str(ip),zone,linenumber,"hostname",hostname_list(shodan),previousstate[str(ip)]["hostname"],3)
-
-                            domains = domain_list(shodan['data'][0]['domains']).split(" ")
-                            for domain in domains:
-                                if domain not in previousstate[str(ip)]["domain"]:
-                                    update_and_report(zonelength,str(ip),zone,linenumber,"domain",domain_list(shodan['data'][0]['domains']),previousstate[str(ip)]["domain"],1)
-
-                            if certificate_status(shodan['data'][0]) != previousstate[str(ip)]["certificate"]:
-                                update_and_report(zonelength,str(ip),zone,linenumber,"certificate",certificate_status(shodan['data'][0]),previousstate[str(ip)]["certificate"],2)
-
-                            if check_asn(shodan) != previousstate[str(ip)]["ASN"]:
-                               # print "1: " + check_asn(shodan) + "2 " + previousstate[str(ip)]["ASN"]
-                                update_and_report(zonelength,str(ip),zone,linenumber,"ASN",check_asn(shodan),previousstate[str(ip)]["ASN"],7)
-
-                            if check_org(shodan) != previousstate[str(ip)]["organization"]:
-                                update_and_report(zonelength,str(ip),zone,linenumber,"organization",check_org(shodan),previousstate[str(ip)]["organization"],6)
-                            
-                            ports = Port_list(shodan).split(" ")
-                            for port in ports:
-                             if port not in previousstate[str(ip)]["ports"]:
-                                update_and_report(zonelength,str(ip),zone,linenumber,"ports",Port_list(shodan),previousstate[str(ip)]["ports"],4)
-                        else: #Otherwise it was an empty results or we had some other error, no reports should be made
-                            print(shodan['error'])
-                        linenumber += 1
-                    except:
-                        continue
+                        if check_asn(shodan) != previousstate[str(ip)]["ASN"]: 
+                           # print "1: " + check_asn(shodan) + "2 " + previousstate[str(ip)]["asn"]
+                            update_and_report(zonelength,str(ip),zone,linenumber,"ASN",check_asn(shodan),previousstate[str(ip)]["ASN"],7)
+                        if check_org(shodan) != previousstate[str(ip)]["organization"]:
+                            update_and_report(zonelength,str(ip),zone,linenumber,"organization",check_org(shodan),previousstate[str(ip)]["organization"],6)
+                        ports = Port_list(shodan).split(" ")
+                        if sorted(previousstate[str(ip)]["ports"].split(" ")) != sorted(ports):
+                            update_and_report(zonelength,str(ip),zone,linenumber,"ports",Port_list(shodan),previousstate[str(ip)]["ports"],4)
+                    else: #otherwise it was an empty results or we had some other error, no reports should be made
+                        print ("error")
+                        print(shodan['error'])
+                    linenumber += 1
         else: #Otherwise, lets just store everything the first time so we can set a base case
             new_baseline = {}
             for ip in IPNetwork(zone):
+                    order.append(str(ip))
                     if (is_private_or_null(ip) == 0):
                         time.sleep(1)
                         parsed_ip = ip
@@ -254,4 +256,4 @@ if __name__ == "__main__":
                                 new_baseline[str(ip)]["ports"] = "N/A"
                         except:
                             continue
-            dict_to_zone_file(new_baseline,zone) #Write this to the file
+        dict_to_zone_file(order,new_baseline,zone) #Write this to the file
