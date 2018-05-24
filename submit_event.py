@@ -20,7 +20,7 @@ import socket
 #from sqlalchemy import exists
 import dateutil.parser
 #from sqlalchemy.sql.expression import literal_column
-from cef_event import generate_cef_event
+from cef_event import generate_cef_event,generate_cef_event_arcsight_list
 import os
 from configparser import ConfigParser
 import getpass
